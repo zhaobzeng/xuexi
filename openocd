@@ -1,0 +1,14 @@
+openocd: 开源的嵌入式调试软件,支持多种soc FPGA CPLD 和调试器
+
+-f 或者 --file <filename>
+指定配置文件，配置文件定义了目标设备、接口和调试器的设置
+
+-c 或者command <cmd>
+openocd -c "init; reset, halt , exit"
+
+-d 或 --debug<level>
+设置调试输出级别。级别从0（无调试信息）到3（详细调试信息）
+
+-s 或 --search<dir>
+添加脚本搜索路径
+openocd -s /path/to/scripts

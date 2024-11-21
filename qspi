@@ -1,0 +1,115 @@
+标准SPI 1根发送 1跟接收 全双工
+dual SPI(双线SPI) 共用2根数据线,半双工
+quad spi 收发共用4跟数据线,半双工
+octal spi 收发共用8跟数据线,半双工
+
+扩展的SPI协议还增加了SDR 模式(单倍速率) 和DDr 模式（双倍速率）
+
+在AHB命令模式下:数据缓存在AHB_TX_BUF(发送缓冲区)， AHB_RX_BUF(接收缓冲区)，此时要传输的字节数由AHB突发传输的大小和类型决定
+在IP命令模式下：数据缓存在IP_TX_FIFO(发送缓冲区) 以及 IP_RX_FIFO 中，此时要传输的字节数可通过寄存器IPCR1 的DATSZ域指定
+
+
+操作通常使用序列的形式并配合STOP指令使用，以上说明的各种指令通常不会单独执行，而是组成一个指令序列，对于指令数不满8的序列，需要使用stop
+指令表示结束
+使用CMD_SDR指令向发送FLASH的读取命令，如W25Q256的Quad模式读取命令编码为0x6B，此时CMD_SDR指令的OPERAND域为0x6B；
+
+使用RADDR_SDR指令发送要读取的FLASH存储单元地址，OPERAND域的值为24表示使用24位的地址，而地址具体的值由寄存器IPCR0设定；
+
+按照FLASH的Quad模式读取命令的要求发送占8个SCK时钟的DUMMY操作，此时使用DUMMY_SDR指令且OPERAND域的值设置为8；
+
+使用READ_SDR指令，开始接收FLASH的数据到IP_RX_FIFO中，要读取的字节数由寄存器IPCR1的DATSZ域指定；
+
+由于使用的指令不足8个字节，在该序列的最后使用STOP指令表示停止，当FlexSPI执行到STOP指令时，会释放SPI的片选信号CS，结束通讯。
+
+
+指令序列：
+查找表LUT视图，表示查找表LUT有0 ~N 个序列，表示一个序列中包含有8个指令
+指令由 指令编码 + 数据线的数目 + 指令参数 三部分组成，每个LUT 可以缓存2个指令，即一个指令序列（8个指令）
+
+opcode：指令编码
+num_pads:数据线数目，进行SPI通讯时使用的数据线的数目，可用参数为 0 single 01 dual 0x2 duad 模式（双倍速率）
+
+operand:指令参数
+
+flexspi控制器实现了一个可编程的序列引擎，执行来自lut的序列，FlexSpi控制器依次执行指令，并相应地在SPI接口上生成flash传输事务
+可编程序列引擎允许软件根据所连接的外部串行设备配置flexspi LUT,
+
+
+
+1、QSPI 支持双线与四线模式
+quadspi 通过命令与flash通信，每条命令包括指令,地址，交替字节、空指令和数据这五个阶段
+
+1、指令阶段
+QSPI 寄存器中配置一条8位指令发送到flash,指定待执行的操作类型
+
+2、地址阶段
+在地址阶段，将1-4字节发送到flash，指示操作地址
+
+访问flash 存储器通常包含一些读写功能的控制指令，主控设备可以通过这些指令访问FLASH 
+FLEXSpI 中包含一个LUT 指令差查找表
+
+
+
+enableCombination:是否使能PORT A 和 PORT B 的数据引脚组合以支持FLASH的8位模式
+enableSckBDiffOpt：是否使能SCKB 用作SCKA 的差分时钟，当使能时PORTB 的flash 无法访问
+enableSameConfigForAll：是否使能对所有连接的设备使用同样的配置，当使能时，FLASH1CRx 的配置会应用到所有设备
+
+
+typedef struct _flexspi_ahbBuffer_config{
+    uint8_t priority; /* 优先级*/
+    uint8_t masterIndex; /* 主索引号 */
+    uint16_t bufferSize; /* 缓冲区大小 */
+}flexspi_ahbBuffer_config_t;
+
+flexspi_ahbBuffer_config_t buffer[8]; 8 是指定义8个这样包含缓冲区信息的结构体
+
+
+typedef struct
+{
+    uint32_t deviceAddr; //要操作的设备地址
+    flexspi_port_t port; //要操作的端口
+    flexspi_command_type_t cmdType; //要执行的命令类型
+    uint8_t seqIndex; /*命令的序列ID*/
+    uint8_t seqNumber; /*命令序列的数量*/
+    uint32_t *data;  //数据缓冲区
+    size_t dataSize; //传输数据的字节数
+}
+deviceAddress:寄存器位IPCR0[SFAR],这用于设置IP指令要访问的FLASH设备的内部地址
+例如读命令中，寄存器位IPCR0[SFAR]，这用于设置IP指令要访问的FLASH设备的内部地址。例如读命令中要读取地址0x1000的内容，那么控制
+deviceAddress的值就应赋值为0x1000
+
+port：
+指定要操作的flash端口，这是一个flexspi_port_t枚举类型，其可选的值分为为A1/A2
+
+tyepdef enum {
+    使用A1 端口访问flash地址
+}flexspi_port_t;
+
+typedef enum
+{
+    command，
+    config
+}
+
+seqIndex： 寄存器IPCR1[ISEQID] 
+
+
+
+LUT(Look Up Table) 指令查找表
+
+
+flash 芯片
+read status register
+write status register
+write enable for volatile status register 
+read data bytes 
+
+read data 
+
+
+灵活的序列引擎
+
+采用AHB_RX_BUFFER 来减少读取延迟，缓冲大小为128 * 64 bit
+
+
+openocd: 开源的嵌入式调试软件,支持多种soc FPGA CPLD 和调试器
